@@ -1,0 +1,1488 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ARJ Logistics Group · Plataforma de última milla</title>
+<meta name="description" content="Plataforma de gestión de entregas de última milla para ARJ Logistics Group. Construida por Qiu Agency con Vibe Coding." />
+<style>
+  html, body, #root { height: 100%; margin: 0; }
+  body { background: #171B33; }
+  #boot { height: 100%; display: flex; align-items: center; justify-content: center;
+          font-family: system-ui, sans-serif; color: #8b93b0; font-size: 14px; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "recharts": "https://esm.sh/recharts@2.12.7?external=react,react-dom",
+    "lucide-react": "https://esm.sh/lucide-react@0.383.0?external=react"
+  }
+}
+</script>
+</head>
+<body>
+<div id="root"><div id="boot">Cargando la plataforma de ARJ…</div></div>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+<script type="text/babel" data-type="module" data-presets="react">
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  LayoutDashboard, PackageCheck, Layers, Route, Radar, Camera, Undo2,
+  BarChart3, Smartphone, Search, Bell, ChevronDown, Truck, MapPin,
+  CheckCircle2, AlertTriangle, Clock, Plus, Box, Send, ScanLine,
+  TrendingUp, TrendingDown, Circle, ShieldCheck, ImageOff, X, ChevronRight,
+  Navigation, Battery, Phone, Zap, Play, Pause, ChevronLeft, Sparkles, MonitorPlay,
+  MessageSquare, Building2, Upload, Users, Wand2, Hash, Send as SendIcon, Trash2
+} from 'lucide-react';
+import {
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, CartesianGrid, LineChart, Line
+} from 'recharts';
+import { createRoot } from 'react-dom/client';
+
+/* ============================================================
+   QiuFlow — Plataforma de gestión de entregas de última milla
+   Qiu Agency · Opción A (Vibe Coding) · Demo navegable v0.1
+   ============================================================ */
+
+const ZONES = ['Chacao', 'Baruta', 'El Hatillo', 'Sucre', 'Libertador', 'Petare'];
+const COURIERS = ['QiuExpress', 'MRW', 'Zoom', 'Tealca'];
+const NAMES = ['María Rondón', 'José Pérez', 'Ana Briceño', 'Carlos Méndez', 'Luisa Graterol',
+  'Pedro Salazar', 'Daniela Ortiz', 'Rafael Mora', 'Gabriela León', 'Andrés Vargas',
+  'Verónica Silva', 'Hugo Ramírez', 'Patricia Díaz', 'Miguel Ávila', 'Sofía Castro'];
+
+const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+const pick = (arr) => arr[rand(0, arr.length - 1)];
+const trackId = (n) => `QIU-${String(248000 + n).padStart(6, '0')}`;
+
+function seedPackages() {
+  const statuses = [
+    'Recibido', 'Recibido', 'Clasificado', 'Clasificado', 'En ruta', 'En ruta',
+    'En ruta', 'Entregado', 'Entregado', 'Entregado', 'Excepción', 'Devolución'
+  ];
+  return Array.from({ length: 64 }, (_, i) => {
+    const st = statuses[i % statuses.length];
+    return {
+      id: trackId(i),
+      recipient: pick(NAMES),
+      zone: pick(ZONES),
+      courier: pick(COURIERS),
+      weight: (rand(2, 180) / 10).toFixed(1),
+      status: st,
+      route: st === 'Recibido' ? '—' : `R-${rand(101, 138)}`,
+      eta: st === 'En ruta' ? `${rand(1, 6)}h ${rand(0, 59)}m` : '—',
+      pod: st === 'Entregado' ? (Math.random() > 0.12 ? 'válido' : 'inválido') : null,
+    };
+  });
+}
+
+const DEPOTS = { Chacao: { x: 50, y: 33 }, Baruta: { x: 56, y: 42 }, Centro: { x: 45, y: 35 } };
+const ADDR_POOL = [
+  'Av. Francisco de Miranda', 'Calle Madrid, Las Mercedes', 'Av. Ppal Los Palos Grandes',
+  'Calle El Ávila, Altamira', 'Av. Río de Janeiro', 'Av. Casanova, Sabana Grande',
+  'Calle Real Sabana Grande', 'Av. Libertador', 'Av. Andrés Bello', 'Calle La Joya, Chacao',
+  'Av. Tamanaco, El Rosal', 'Av. Venezuela, El Rosal', 'Calle Guaicaipuro', 'Av. Urdaneta',
+  'Calle Comercio, Petare', 'Av. Sucre, Los Dos Caminos',
+];
+
+const ROUTES = Array.from({ length: 8 }, (_, i) => {
+  const stops = rand(28, 52);
+  const done = rand(0, stops);
+  const dispatched = i < 5;
+  const station = pick(['Chacao', 'Baruta', 'Centro']);
+  const stopsList = Array.from({ length: rand(11, 14) }, (_, j) => ({
+    addr: ADDR_POOL[(i * 5 + j) % ADDR_POOL.length],
+    x: rand(8, 92), y: rand(8, 62),
+  }));
+  return {
+    id: `R-${101 + i}`,
+    zone: ZONES[i % ZONES.length],
+    driver: NAMES[i],
+    station,
+    stops, done,
+    status: dispatched ? 'En ruta' : 'Planificada',
+    optimized: false, stopsList,
+  };
+});
+
+const SUPPLIERS = [
+  { id: 'P-1', name: 'Empaques del Centro', contact: 'Marisol Aponte', phone: '+58 412-5550101', email: 'ventas@empaquescentro.ve', type: 'Insumos', zone: 'Libertador', status: 'Activo' },
+  { id: 'P-2', name: 'Transporte Andino C.A.', contact: 'Régulo Pérez', phone: '+58 414-5550199', email: 'flota@tandino.ve', type: 'Flota tercerizada', zone: 'Sucre', status: 'Activo' },
+  { id: 'P-3', name: 'Combustibles Premium', contact: 'Yelitza Mora', phone: '+58 416-5550144', email: 'pedidos@cpremium.ve', type: 'Combustible', zone: 'Chacao', status: 'Activo' },
+  { id: 'P-4', name: 'TecnoEtiquetas', contact: 'Iván Castro', phone: '+58 424-5550177', email: 'soporte@tecnoetiq.ve', type: 'Etiquetado', zone: 'Baruta', status: 'Pendiente' },
+  { id: 'P-5', name: 'Repuestos Express', contact: 'Daniela León', phone: '+58 412-5550133', email: 'ventas@repex.ve', type: 'Mantenimiento', zone: 'El Hatillo', status: 'Activo' },
+];
+
+// Parser CSV ligero (sin dependencias) + adivinador de columnas
+function parseCSV(text) {
+  const lines = String(text).replace(/\r/g, '').split('\n').filter((l) => l.length);
+  const split = (l) => {
+    const out = []; let cur = '', q = false;
+    for (let i = 0; i < l.length; i++) {
+      const ch = l[i];
+      if (ch === '"') { if (q && l[i + 1] === '"') { cur += '"'; i++; } else q = !q; }
+      else if (ch === ',' && !q) { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+    out.push(cur); return out.map((s) => s.trim());
+  };
+  return { headers: split(lines[0] || ''), rows: lines.slice(1).map(split) };
+}
+const FIELD_SYN = {
+  name: ['nombre', 'proveedor', 'empresa', 'razon', 'razón', 'contacto', 'name'],
+  contact: ['persona', 'encargado', 'representante', 'contact'],
+  phone: ['tel', 'telefono', 'teléfono', 'celular', 'movil', 'móvil', 'phone'],
+  email: ['email', 'correo', 'mail', 'e-mail'],
+  type: ['tipo', 'categoria', 'categoría', 'rubro', 'servicio', 'type'],
+  zone: ['zona', 'ciudad', 'region', 'región', 'estado', 'sector', 'zone'],
+};
+const guessIdx = (headers, key) => headers.findIndex((h) => (FIELD_SYN[key] || [key]).some((s) => h.toLowerCase().includes(s)));
+const cell = (row, i) => (i == null || i < 0 ? '' : (row[i] || '').trim());
+
+// ---- Motor de optimización de rutas (vecino más cercano + 2-opt) ----
+const KM_PER_UNIT = 0.42, AVG_KMH = 24, SERVICE_MIN = 2.4;
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function pathLength(depot, pts) { let d = 0, prev = depot; for (const p of pts) { d += dist(prev, p); prev = p; } return d; }
+function nearestNeighbor(depot, pts) {
+  const rem = pts.slice(), out = []; let cur = depot;
+  while (rem.length) { let bi = 0, bd = Infinity; rem.forEach((p, i) => { const dd = dist(cur, p); if (dd < bd) { bd = dd; bi = i; } }); cur = rem[bi]; out.push(cur); rem.splice(bi, 1); }
+  return out;
+}
+function twoOpt(depot, route) {
+  let best = route.slice(), bl = pathLength(depot, best), improved = true, pass = 0;
+  const n = best.length;
+  while (improved && pass < 8) {
+    improved = false; pass++;
+    for (let i = 0; i < n - 1; i++) for (let k = i + 1; k < n; k++) {
+      const cand = best.slice(0, i).concat(best.slice(i, k + 1).reverse(), best.slice(k + 1));
+      const cl = pathLength(depot, cand);
+      if (cl < bl - 1e-6) { best = cand; bl = cl; improved = true; }
+    }
+  }
+  return best;
+}
+const optimizeRoute = (depot, pts) => twoOpt(depot, nearestNeighbor(depot, pts));
+const kmOf = (depot, pts) => pathLength(depot, pts) * KM_PER_UNIT;
+const minOf = (km, stops) => Math.round((km / AVG_KMH) * 60 + stops * SERVICE_MIN);
+
+const PATHS = [
+  [[120, 120], [320, 180], [480, 120], [620, 240], [780, 200]],
+  [[180, 460], [360, 380], [520, 440], [700, 360], [860, 420]],
+  [[100, 300], [280, 260], [440, 320], [600, 280], [760, 340]],
+  [[240, 100], [400, 240], [560, 160], [700, 300], [880, 240]],
+  [[160, 520], [340, 460], [500, 520], [680, 460], [820, 520]],
+];
+
+const seedExceptions = () => ([
+  { id: trackId(70), recipient: pick(NAMES), zone: pick(ZONES), type: 'Intento fallido', detail: 'Destinatario ausente (2º intento)', sev: 'amber', resolved: false },
+  { id: trackId(71), recipient: pick(NAMES), zone: pick(ZONES), type: 'POD inválido', detail: 'Foto borrosa / sin firma', sev: 'red', resolved: false },
+  { id: trackId(72), recipient: pick(NAMES), zone: pick(ZONES), type: 'Dirección incorrecta', detail: 'Zona no coincide con sort', sev: 'amber', resolved: false },
+  { id: trackId(73), recipient: pick(NAMES), zone: pick(ZONES), type: 'Robo reportado', detail: 'Paquete extraviado en ruta', sev: 'red', resolved: false },
+  { id: trackId(74), recipient: pick(NAMES), zone: pick(ZONES), type: 'Devolución', detail: 'Rechazo del cliente', sev: 'amber', resolved: false },
+]);
+
+const NAV = [
+  { id: 'control', label: 'Centro de control', icon: LayoutDashboard, group: 'Operación' },
+  { id: 'recepcion', label: 'Recepción e ingreso', icon: PackageCheck, group: 'Operación' },
+  { id: 'sort', label: 'Clasificación (Sort)', icon: Layers, group: 'Operación' },
+  { id: 'rutas', label: 'Rutas y despacho', icon: Route, group: 'Operación' },
+  { id: 'live', label: 'Seguimiento en vivo', icon: Radar, group: 'Operación' },
+  { id: 'pod', label: 'Prueba de entrega', icon: Camera, group: 'Operación' },
+  { id: 'excepciones', label: 'Devoluciones y excepciones', icon: Undo2, group: 'Control' },
+  { id: 'bi', label: 'Business Intelligence', icon: BarChart3, group: 'Control' },
+  { id: 'proveedores', label: 'Proveedores', icon: Building2, group: 'Red' },
+  { id: 'chat', label: 'Chat de equipo', icon: MessageSquare, group: 'Red' },
+  { id: 'driver', label: 'App de conductor', icon: Smartphone, group: 'Campo' },
+];
+
+const TOUR = [
+  { kind: 'cover' },
+  {
+    kind: 'module', view: 'control', accent: '#EB6C27', kicker: 'Visibilidad total',
+    title: 'Un solo centro de control para toda la operación',
+    body: ['KPIs en vivo con semáforo verde / ámbar / rojo', 'Salud por ruta y desglose por pedido', 'Decida con datos, en el momento'],
+  },
+  {
+    kind: 'module', view: 'recepcion', accent: '#16A974', kicker: 'Del almacén al sistema',
+    title: 'Recepción e ingreso sin fricción',
+    body: ['Escaneo, validación de inventario y etiquetado', 'Cada paquete entra trazable desde el minuto cero', 'Menos errores manuales, más velocidad'],
+  },
+  {
+    kind: 'module', view: 'sort', accent: '#6E79B5', kicker: 'Clasificación inteligente',
+    title: 'Sorteo por zona y ruta',
+    body: ['Asignación automática a contenedores', 'Organizado para un despacho ágil', 'Listo para armar rutas en segundos'],
+  },
+  {
+    kind: 'module', view: 'rutas', accent: '#EB6C27', kicker: 'Rutas, despacho y optimización',
+    title: 'Arme, optimice y despache en minutos',
+    body: ['Optimización de rutas con IA en un clic', 'Vista en tabla y en mapa', 'Salida a reparto por estación, flota y conductor'],
+  },
+  {
+    kind: 'module', view: 'live', accent: '#16A974', kicker: 'Tiempo real',
+    title: 'Cada conductor, en vivo en el mapa',
+    body: ['Rastreo de conductores y parcelas', 'Estado por paquete y secuencia', 'ETA y semáforo por ruta'],
+  },
+  {
+    kind: 'module', view: 'pod', accent: '#EB6C27', kicker: 'Evidencia de cada entrega',
+    title: 'Prueba de entrega (POD)',
+    body: ['Foto por entrega capturada en campo', 'Control de POD inválido y robos', 'Respaldo ante cualquier disputa'],
+  },
+  {
+    kind: 'module', view: 'excepciones', accent: '#E0A52E', kicker: 'Control de incidencias',
+    title: 'Centro de devoluciones y excepciones',
+    body: ['Intentos fallidos, robos y rechazos en un solo lugar', 'Reversa y resolución guiada', 'Nada se pierde, todo se gestiona'],
+  },
+  {
+    kind: 'module', view: 'bi', accent: '#EB6C27', kicker: 'Decida con datos',
+    title: 'Business Intelligence en vivo',
+    body: ['Entregas, SLA y volumen por zona', 'Tableros y reportería exportable', 'Tendencias para optimizar la operación'],
+  },
+  {
+    kind: 'module', view: 'proveedores', accent: '#EB6C27', kicker: 'Su red de aliados',
+    title: 'Proveedores y contactos centralizados',
+    body: ['Importe contactos y proveedores desde un CSV', 'Mapee las columnas a los datos que importan', 'Toda su red, lista para operar'],
+  },
+  {
+    kind: 'module', view: 'chat', accent: '#6E79B5', kicker: 'Equipo coordinado',
+    title: 'Chat de equipo interno',
+    body: ['Canales por operación, despacho e incidencias', 'Coordine sin salir de la plataforma', 'Menos llamadas, más contexto en un solo lugar'],
+  },
+  {
+    kind: 'module', view: 'driver', accent: '#16A974', kicker: 'La operación en la calle',
+    title: 'App de conductor',
+    body: ['Secuencia de paradas optimizada', 'Captura de POD desde el teléfono', 'El conductor siempre sabe qué sigue'],
+  },
+  { kind: 'closing' },
+];
+
+const C = {
+  navy900: '#171B33', navy800: '#22284A', navy700: '#2C3463', navy600: '#3A4377',
+  blue: '#EB6C27', blueLt: '#6E79B5', paper: '#F1F2F6', card: '#FFFFFF',
+  line: '#E4E7EF', ink: '#22284A', muted: '#7C8194',
+  green: '#16A974', amber: '#E0A52E', red: '#E2564B',
+};
+
+function StatusDot({ s }) {
+  const map = {
+    'Entregado': C.green, 'En ruta': C.blue, 'Clasificado': C.blueLt,
+    'Recibido': C.muted, 'Excepción': C.red, 'Devolución': C.amber, 'Planificada': C.muted,
+  };
+  return <span className="qf-dot" style={{ background: map[s] || C.muted }} />;
+}
+
+function QiuFlow() {
+  const [view, setView] = useState('control');
+  const [station, setStation] = useState('Todas las estaciones');
+  const [pkgs, setPkgs] = useState(seedPackages);
+  const [routes, setRoutes] = useState(ROUTES);
+  const [excs, setExcs] = useState(seedExceptions);
+  const [suppliers, setSuppliers] = useState(SUPPLIERS);
+  const [tick, setTick] = useState(0);
+  const [toast, setToast] = useState(null);
+  const [presenting, setPresenting] = useState(false);
+  const [step, setStep] = useState(0);
+  const [auto, setAuto] = useState(false);
+
+  useEffect(() => {
+    const t = setInterval(() => setTick((x) => x + 1), 2200);
+    return () => clearInterval(t);
+  }, []);
+
+  const flash = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
+
+  // Presentación guiada: sincroniza vista, autoplay y teclado
+  useEffect(() => {
+    if (presenting && TOUR[step].view) setView(TOUR[step].view);
+  }, [presenting, step]);
+  useEffect(() => {
+    if (!presenting || !auto) return;
+    const t = setInterval(() => setStep((s) => Math.min(s + 1, TOUR.length - 1)), 7000);
+    return () => clearInterval(t);
+  }, [presenting, auto, step]);
+  useEffect(() => {
+    if (!presenting) return;
+    const onKey = (e) => {
+      if (e.key === 'ArrowRight') setStep((s) => Math.min(s + 1, TOUR.length - 1));
+      if (e.key === 'ArrowLeft') setStep((s) => Math.max(s - 1, 0));
+      if (e.key === 'Escape') setPresenting(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [presenting]);
+  const startPresent = () => { setStep(0); setAuto(false); setPresenting(true); };
+
+  const counts = useMemo(() => {
+    const by = (s) => pkgs.filter((p) => p.status === s).length;
+    return {
+      total: 27480, recibido: by('Recibido'), clasificado: by('Clasificado'),
+      enruta: by('En ruta'), entregado: by('Entregado'),
+      excepcion: by('Excepción') + by('Devolución'),
+      rutas: routes.filter((r) => r.status === 'En ruta').length,
+    };
+  }, [pkgs, routes]);
+
+  const recibirSiguiente = () => {
+    const idx = pkgs.findIndex((p) => p.status === 'Recibido' && p.route === '—');
+    if (idx < 0) { flash('Sin paquetes pendientes de ingreso'); return; }
+    flash(`Paquete ${pkgs[idx].id} ingresado y validado ✓`);
+    setPkgs((arr) => arr.map((p, i) => i === idx ? { ...p, status: 'Clasificado', route: `R-${rand(101, 138)}` } : p));
+  };
+
+  const despachar = (id) => {
+    setRoutes((arr) => arr.map((r) => r.id === id ? { ...r, status: 'En ruta' } : r));
+    flash(`Ruta ${id} despachada a reparto ✓`);
+  };
+
+  const resolver = (id) => {
+    setExcs((arr) => arr.map((e) => e.id === id ? { ...e, resolved: true } : e));
+    flash(`Incidencia ${id} resuelta`);
+  };
+
+  const optimizar = (id, msg) => {
+    setRoutes((arr) => arr.map((r) => r.id === id ? { ...r, optimized: true } : r));
+    flash(msg || `Ruta ${id} optimizada ✓`);
+  };
+  const optimizarTodas = () => {
+    setRoutes((arr) => arr.map((r) => ({ ...r, optimized: true })));
+    flash('Todas las rutas optimizadas con IA ✓');
+  };
+
+  return (
+    <div className="qf-root">
+      <style>{CSS}</style>
+
+      {/* SIDEBAR */}
+      <aside className="qf-side">
+        <div className="qf-brand">
+          <ArjLogo h={32} light />
+        </div>
+
+        <nav className="qf-nav">
+          {['Operación', 'Control', 'Red', 'Campo'].map((g) => (
+            <div key={g} className="qf-navgroup">
+              <div className="qf-navlabel">{g}</div>
+              {NAV.filter((n) => n.group === g).map((n) => {
+                const Icon = n.icon;
+                return (
+                  <button key={n.id} className={`qf-navbtn ${view === n.id ? 'active' : ''}`} onClick={() => setView(n.id)}>
+                    <Icon size={17} strokeWidth={2} />
+                    <span>{n.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+
+        <div className="qf-sidefoot">
+          <div className="qf-livebadge"><span className="qf-pulse" />Operación en vivo</div>
+          <div className="qf-foottext">Qiu Agency · Vibe Coding</div>
+        </div>
+      </aside>
+
+      {/* MAIN */}
+      <div className="qf-main">
+        <header className="qf-top">
+          <div className="qf-topclient">
+            <span className="qf-clientchip">[Nombre del Cliente]</span>
+            <button className="qf-station">{station}<ChevronDown size={15} /></button>
+          </div>
+          <div className="qf-topright">
+            <button className="qf-btn primary" onClick={startPresent}><MonitorPlay size={16} />Presentar</button>
+            <div className="qf-search"><Search size={15} /><input placeholder="Buscar guía, ruta o conductor…" /></div>
+            <button className="qf-iconbtn"><Bell size={17} /><span className="qf-notif" /></button>
+            <div className="qf-avatar">OP</div>
+          </div>
+        </header>
+
+        <main className="qf-content">
+          {view === 'control' && <Control counts={counts} routes={routes} tick={tick} />}
+          {view === 'recepcion' && <Recepcion pkgs={pkgs} onReceive={recibirSiguiente} />}
+          {view === 'sort' && <Sort pkgs={pkgs} />}
+          {view === 'rutas' && <Rutas routes={routes} onDispatch={despachar} onOptimize={optimizar} onOptimizeAll={optimizarTodas} />}
+          {view === 'live' && <Live routes={routes} tick={tick} pkgs={pkgs} />}
+          {view === 'pod' && <Pod pkgs={pkgs} setPkgs={setPkgs} flash={flash} />}
+          {view === 'excepciones' && <Excepciones excs={excs} onResolve={resolver} />}
+          {view === 'bi' && <BI counts={counts} />}
+          {view === 'proveedores' && <Proveedores suppliers={suppliers} setSuppliers={setSuppliers} flash={flash} />}
+          {view === 'chat' && <Chat />}
+          {view === 'driver' && <Driver flash={flash} />}
+        </main>
+      </div>
+
+      {toast && <div className="qf-toast"><CheckCircle2 size={16} />{toast}</div>}
+      {presenting && <Presenter step={step} setStep={setStep} auto={auto} setAuto={setAuto} onClose={() => setPresenting(false)} />}
+    </div>
+  );
+}
+
+/* ---------- Logo ARJ (vectorial, ligero) ---------- */
+function ArjLogo({ h = 32, light = true }) {
+  const txt = light ? '#FFFFFF' : '#22284A';
+  return (
+    <div className="arj-logo" style={{ height: h }}>
+      <svg viewBox="0 0 66 46" style={{ height: h, width: 'auto' }} fill="none">
+        <g stroke="#EB6C27" strokeWidth="3.4" strokeLinecap="round">
+          <line x1="3" y1="15" x2="19" y2="15" />
+          <line x1="9" y1="22" x2="27" y2="22" />
+          <line x1="1" y1="29" x2="17" y2="29" />
+          <line x1="11" y1="36" x2="23" y2="36" />
+        </g>
+        <circle cx="30" cy="33" r="6" stroke="#EB6C27" strokeWidth="3" />
+        <circle cx="30" cy="33" r="1.7" fill="#EB6C27" />
+        <path d="M44 7 L52 7 L40 41 L32 41 Z" fill="#EB6C27" />
+        <path d="M55 7 L63 7 L51 41 L43 41 Z" fill={txt} opacity="0.92" />
+      </svg>
+      <div className="arj-word" style={{ color: txt, fontSize: h * 0.6 }}>
+        <span className="arj-arj">ARJ</span>
+        <span className="arj-sub">Logistics Group</span>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- VISTA: Proveedores (lista + importar CSV con mapeo) ---------- */
+function Proveedores({ suppliers, setSuppliers, flash }) {
+  const [stepv, setStepv] = useState('list'); // list | map
+  const [parsed, setParsed] = useState(null);
+  const [mapping, setMapping] = useState({});
+  const fields = [
+    { key: 'name', label: 'Proveedor / Contacto' },
+    { key: 'contact', label: 'Persona de contacto' },
+    { key: 'phone', label: 'Teléfono' },
+    { key: 'email', label: 'Email' },
+    { key: 'type', label: 'Tipo' },
+    { key: 'zone', label: 'Zona' },
+  ];
+  const onFile = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      const p = parseCSV(r.result);
+      setParsed(p);
+      const g = {};
+      fields.forEach((fl) => { g[fl.key] = guessIdx(p.headers, fl.key); });
+      setMapping(g);
+      setStepv('map');
+    };
+    r.readAsText(f);
+    e.target.value = '';
+  };
+  const doImport = () => {
+    const rows = parsed.rows.filter((r) => r.some((c) => c && c.length));
+    const imported = rows.map((r, i) => ({
+      id: 'P-' + (suppliers.length + i + 1),
+      name: cell(r, mapping.name) || 'Sin nombre',
+      contact: cell(r, mapping.contact) || '—',
+      phone: cell(r, mapping.phone) || '—',
+      email: cell(r, mapping.email) || '—',
+      type: cell(r, mapping.type) || 'Proveedor',
+      zone: cell(r, mapping.zone) || '—',
+      status: 'Nuevo',
+    }));
+    setSuppliers((s) => [...imported, ...s]);
+    flash(`${imported.length} registros importados ✓`);
+    setStepv('list'); setParsed(null);
+  };
+
+  return (
+    <Page title="Proveedores y contactos" sub="Su red de aliados centralizada. Importe contactos desde CSV y mapee las columnas a los datos que importan." crumb="Red"
+      action={stepv === 'list' && (
+        <label className="qf-btn primary" style={{ cursor: 'pointer' }}>
+          <Upload size={16} />Importar CSV
+          <input type="file" accept=".csv,text/csv" onChange={onFile} style={{ display: 'none' }} />
+        </label>
+      )}>
+      {stepv === 'map' && parsed && (
+        <Card title="Mapear columnas del CSV" sub={`${parsed.rows.length} filas detectadas · asigna cada columna al campo correcto`}>
+          <div className="qf-mapgrid">
+            {fields.map((fl) => (
+              <div key={fl.key} className="qf-maprow">
+                <label>{fl.label}</label>
+                <select value={mapping[fl.key]} onChange={(e) => setMapping((m) => ({ ...m, [fl.key]: Number(e.target.value) }))}>
+                  <option value={-1}>— No importar —</option>
+                  {parsed.headers.map((h, i) => <option key={i} value={i}>{h || `Columna ${i + 1}`}</option>)}
+                </select>
+                <span className="qf-mappreview">{cell(parsed.rows[0] || [], mapping[fl.key]) || '·'}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <button className="qf-btn primary" onClick={doImport}><CheckCircle2 size={16} />Importar {parsed.rows.filter((r) => r.some((c) => c)).length} registros</button>
+            <button className="qf-btn ghost" onClick={() => { setStepv('list'); setParsed(null); }}>Cancelar</button>
+          </div>
+        </Card>
+      )}
+
+      {stepv === 'list' && (
+        <>
+          <div className="qf-stat3">
+            <MiniStat icon={Building2} label="Proveedores" val={suppliers.length} col={C.blue} />
+            <MiniStat icon={CheckCircle2} label="Activos" val={suppliers.filter((s) => s.status === 'Activo').length} col={C.green} />
+            <MiniStat icon={Users} label="Contactos" val={suppliers.length} col={C.blueLt} />
+          </div>
+          <Card title="Directorio de proveedores" sub="Importados y registrados">
+            <Table cols={['Proveedor', 'Contacto', 'Tipo', 'Zona', 'Teléfono', 'Estado']}>
+              {suppliers.map((s) => (
+                <tr key={s.id}>
+                  <td style={{ fontWeight: 600 }}>{s.name}</td>
+                  <td>{s.contact}</td>
+                  <td><span className="qf-chip">{s.type}</span></td>
+                  <td>{s.zone}</td>
+                  <td className="qf-mono qf-sm">{s.phone}</td>
+                  <td><span className="qf-badge"><StatusDot s={s.status === 'Activo' ? 'Entregado' : s.status === 'Pendiente' ? 'Devolución' : 'Clasificado'} />{s.status}</span></td>
+                </tr>
+              ))}
+            </Table>
+          </Card>
+        </>
+      )}
+    </Page>
+  );
+}
+
+/* ---------- VISTA: Chat de equipo ---------- */
+function Chat() {
+  const [active, setActive] = useState('operaciones');
+  const channels = [
+    { id: 'operaciones', label: 'operaciones' }, { id: 'despacho', label: 'despacho' },
+    { id: 'incidencias', label: 'incidencias' }, { id: 'flota', label: 'flota' },
+  ];
+  const [msgs, setMsgs] = useState({
+    operaciones: [{ who: 'Régulo P.', t: 'Buenas, arrancamos con 234 rutas hoy', time: '07:12' }, { who: 'Yelitza M.', t: 'Confirmado, todas las estaciones cargadas ✅', time: '07:15' }],
+    despacho: [{ who: 'Iván C.', t: 'R-114 lista para salir', time: '08:01' }, { who: 'Marisol A.', t: 'Despachando R-118 a Baruta', time: '08:06' }],
+    incidencias: [{ who: 'Daniela L.', t: 'POD inválido en QIU-248071, reasignado', time: '09:22' }],
+    flota: [{ who: 'Marisol A.', t: '2 unidades en mantenimiento hoy', time: '06:50' }],
+  });
+  const [text, setText] = useState('');
+  const send = () => {
+    if (!text.trim()) return;
+    setMsgs((m) => ({ ...m, [active]: [...m[active], { who: 'Tú', t: text.trim(), time: 'ahora', me: true }] }));
+    setText('');
+  };
+  return (
+    <Page title="Chat de equipo" sub="Coordine la operación sin salir de la plataforma — canales por área." crumb="Red">
+      <div className="qf-chat">
+        <div className="qf-chanlist">
+          {channels.map((c) => (
+            <button key={c.id} className={`qf-chan ${active === c.id ? 'active' : ''}`} onClick={() => setActive(c.id)}>
+              <Hash size={15} />{c.label}
+            </button>
+          ))}
+        </div>
+        <div className="qf-chatmain">
+          <div className="qf-chathdr"><Hash size={16} />{active}</div>
+          <div className="qf-chatmsgs">
+            {msgs[active].map((m, i) => (
+              <div key={i} className={`qf-msg ${m.me ? 'me' : ''}`}>
+                <div className="qf-msgava" style={{ background: m.me ? C.blue : C.navy600 }}>{m.who.slice(0, 2)}</div>
+                <div className="qf-msgbody">
+                  <div className="qf-msgmeta"><b>{m.who}</b><span>{m.time}</span></div>
+                  <div className="qf-msgtext">{m.t}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="qf-chatinput">
+            <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} placeholder={`Mensaje a #${active}…`} />
+            <button className="qf-btn primary" onClick={send}><SendIcon size={15} />Enviar</button>
+          </div>
+        </div>
+      </div>
+    </Page>
+  );
+}
+
+/* ---------- Modo presentación ---------- */
+function Presenter({ step, setStep, auto, setAuto, onClose }) {
+  const s = TOUR[step];
+  const total = TOUR.length;
+  const next = () => setStep((x) => Math.min(x + 1, total - 1));
+  const prev = () => setStep((x) => Math.max(x - 1, 0));
+  return (
+    <div className="qf-present">
+      <div className="qf-pbar">
+        <button onClick={prev} disabled={step === 0}><ChevronLeft size={18} /></button>
+        <button onClick={() => setAuto((a) => !a)}>{auto ? <Pause size={15} /> : <Play size={15} />}</button>
+        <button onClick={next} disabled={step === total - 1}><ChevronRight size={18} /></button>
+        <div className="qf-pdots">{TOUR.map((_, i) => <span key={i} className={i === step ? 'on' : ''} onClick={() => setStep(i)} />)}</div>
+        <span className="qf-pcount">{step + 1} / {total}</span>
+        <button className="qf-pexit" onClick={onClose}><X size={15} />Salir</button>
+      </div>
+
+      {s.kind === 'cover' && <CoverSlide onStart={next} />}
+      {s.kind === 'closing' && <ClosingSlide onRestart={() => setStep(0)} />}
+      {s.kind === 'module' && (
+        <div className="qf-pnarr" key={step}>
+          <div className="qf-pkicker" style={{ color: s.accent }}>{s.kicker}</div>
+          <h2>{s.title}</h2>
+          <ul>{s.body.map((b, i) => <li key={i}><CheckCircle2 size={15} />{b}</li>)}</ul>
+          <button className="qf-btn primary" onClick={next}>Siguiente<ChevronRight size={15} /></button>
+        </div>
+      )}
+    </div>
+  );
+}
+function CoverSlide({ onStart }) {
+  const stats = [{ b: '+27K', s: 'paquetes / día' }, { b: '+230', s: 'rutas activas' }, { b: 'Live', s: 'seguimiento real' }, { b: 'POD', s: 'foto por entrega' }];
+  return (
+    <div className="qf-slide">
+      <ArjLogo h={58} light />
+      <div className="qf-skicker" style={{ marginTop: 22 }}>Connecting distances · Delivering confidence</div>
+      <h1 className="qf-stitle">Plataforma de gestión de <b>última milla</b></h1>
+      <p className="qf-ssub">Recepción, rutas, despacho, seguimiento en tiempo real y prueba de entrega — la operación de ARJ en un solo sistema.</p>
+      <div className="qf-sstats">{stats.map((x) => <div key={x.b} className="qf-sstat"><b>{x.b}</b><span>{x.s}</span></div>)}</div>
+      <div className="qf-schip"><Sparkles size={15} color="#EB6C27" />Construida por&nbsp;<b>Qiu Agency</b>&nbsp;· Vibe Coding</div>
+      <button className="qf-sbtn" onClick={onStart}>Iniciar recorrido<ChevronRight size={18} /></button>
+    </div>
+  );
+}
+function ClosingSlide({ onRestart }) {
+  const recap = [{ b: '4–6 sem', s: 'a producción' }, { b: '30 días', s: 'garantía incluida' }, { b: '100%', s: 'activo del cliente' }];
+  return (
+    <div className="qf-slide">
+      <ArjLogo h={42} light />
+      <div className="qf-skicker" style={{ marginTop: 20 }}>Pongamos su operación en marcha</div>
+      <h1 className="qf-stitle">Su operación, lista en <b>semanas</b></h1>
+      <p className="qf-ssub">Una plataforma completa, a la medida de ARJ Logistics Group — construida con Vibe Coding y con acompañamiento garantizado tras la entrega.</p>
+      <div className="qf-sstats">{recap.map((x) => <div key={x.b} className="qf-sstat"><b>{x.b}</b><span>{x.s}</span></div>)}</div>
+      <div className="qf-scontact">
+        <span><b>Instagram</b>@qiu.agency</span>
+        <span><b>Sitio web</b>growthhub.qiuagency.com</span>
+        <span><b>Email</b>qiuagency2023@gmail.com</span>
+      </div>
+      <button className="qf-sbtn" style={{ marginTop: 30 }} onClick={onRestart}><Play size={16} />Reiniciar recorrido</button>
+    </div>
+  );
+}
+
+/* ---------- VISTA: Centro de control ---------- */
+function Control({ counts, routes, tick }) {
+  const hourly = useMemo(() => Array.from({ length: 12 }, (_, i) => ({
+    h: `${7 + i}:00`, entregas: rand(900, 2600), recibidos: rand(1100, 2900),
+  })), []);
+  const kpis = [
+    { label: 'Paquetes hoy', val: counts.total.toLocaleString('es'), sub: 'volumen del día', sev: 'green', icon: Box, d: '+4.2%' },
+    { label: 'Rutas activas', val: counts.rutas + 226, sub: 'en reparto ahora', sev: 'green', icon: Truck, d: '+12' },
+    { label: 'Tasa de entrega', val: '96.4%', sub: 'primer intento', sev: 'green', icon: CheckCircle2, d: '+1.1%' },
+    { label: 'Excepciones', val: counts.excepcion + 8, sub: 'requieren atención', sev: 'amber', icon: AlertTriangle, d: '-3' },
+    { label: 'POD capturados', val: '94.8%', sub: 'foto por entrega', sev: 'green', icon: Camera, d: '+0.6%' },
+    { label: 'SLA en riesgo', val: '5', sub: 'rutas con retraso', sev: 'red', icon: Clock, d: '+2' },
+  ];
+  return (
+    <Page title="Centro de control" sub="Visibilidad total de la operación, en tiempo real." crumb="Operación">
+      <div className="qf-kpis">
+        {kpis.map((k, i) => {
+          const Icon = k.icon;
+          const col = C[k.sev];
+          return (
+            <div key={i} className="qf-kpi" style={{ animationDelay: `${i * 60}ms` }}>
+              <div className="qf-kpi-top">
+                <span className="qf-kpi-ico" style={{ background: col + '1A', color: col }}><Icon size={18} /></span>
+                <span className="qf-semaforo" style={{ background: col }} />
+              </div>
+              <div className="qf-kpi-val">{k.val}</div>
+              <div className="qf-kpi-label">{k.label}</div>
+              <div className="qf-kpi-foot"><span className="qf-kpi-sub">{k.sub}</span><span className="qf-kpi-d" style={{ color: col }}>{k.d}</span></div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="qf-grid2">
+        <Card title="Flujo del día" sub="Recepción vs. entregas por hora">
+          <div style={{ height: 260 }}>
+            <ResponsiveContainer>
+              <AreaChart data={hourly} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.blue} stopOpacity={0.35} /><stop offset="100%" stopColor={C.blue} stopOpacity={0} /></linearGradient>
+                  <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.green} stopOpacity={0.28} /><stop offset="100%" stopColor={C.green} stopOpacity={0} /></linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
+                <XAxis dataKey="h" tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={tipStyle} />
+                <Area type="monotone" dataKey="recibidos" stroke={C.blue} strokeWidth={2} fill="url(#g1)" />
+                <Area type="monotone" dataKey="entregas" stroke={C.green} strokeWidth={2} fill="url(#g2)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card title="Salud por ruta" sub="Semáforo verde / ámbar / rojo">
+          <div className="qf-routehealth">
+            {routes.map((r) => {
+              const pct = Math.round((r.done / r.stops) * 100);
+              const sev = r.status !== 'En ruta' ? 'muted' : pct > 60 ? 'green' : pct > 30 ? 'amber' : 'red';
+              return (
+                <div key={r.id} className="qf-rh">
+                  <span className="qf-rh-id">{r.id}</span>
+                  <span className="qf-rh-zone">{r.zone}</span>
+                  <div className="qf-rh-bar"><div style={{ width: `${pct}%`, background: C[sev] || C.muted }} /></div>
+                  <span className="qf-rh-pct" style={{ color: C[sev] || C.muted }}>{r.status === 'En ruta' ? pct + '%' : '—'}</span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      </div>
+    </Page>
+  );
+}
+
+/* ---------- VISTA: Recepción ---------- */
+function Recepcion({ pkgs, onReceive }) {
+  const pend = pkgs.filter((p) => p.status === 'Recibido' && p.route === '—');
+  const rows = pkgs.filter((p) => p.status === 'Recibido' || p.status === 'Clasificado').slice(0, 18);
+  return (
+    <Page title="Recepción e ingreso" sub="Entrante de paquetes, validación de inventario y etiquetado." crumb="Operación"
+      action={<button className="qf-btn primary" onClick={onReceive}><ScanLine size={16} />Escanear / Recibir</button>}>
+      <div className="qf-stat3">
+        <MiniStat icon={Box} label="En cola de ingreso" val={pend.length} col={C.amber} />
+        <MiniStat icon={CheckCircle2} label="Validados (turno)" val={342} col={C.green} />
+        <MiniStat icon={ScanLine} label="Etiquetas impresas" val={331} col={C.blue} />
+      </div>
+      <Card title="Bandeja de entrante" sub="Recepción, validación de inventario e impresión de etiquetas">
+        <Table cols={['Guía', 'Destinatario', 'Zona', 'Courier', 'Peso', 'Estado']}>
+          {rows.map((p) => (
+            <tr key={p.id}>
+              <td className="qf-mono">{p.id}</td><td>{p.recipient}</td><td>{p.zone}</td>
+              <td>{p.courier}</td><td className="qf-mono">{p.weight} kg</td>
+              <td><span className="qf-badge"><StatusDot s={p.status} />{p.status}</span></td>
+            </tr>
+          ))}
+        </Table>
+      </Card>
+    </Page>
+  );
+}
+
+/* ---------- VISTA: Clasificación ---------- */
+function Sort({ pkgs }) {
+  const byZone = ZONES.map((z) => ({
+    zone: z,
+    items: pkgs.filter((p) => p.zone === z && (p.status === 'Clasificado' || p.status === 'Recibido')),
+  }));
+  return (
+    <Page title="Clasificación (Sort)" sub="Sorteo por zona y ruta, asignación a contenedores." crumb="Operación">
+      <div className="qf-sortgrid">
+        {byZone.map((b) => (
+          <div key={b.zone} className="qf-sortcol">
+            <div className="qf-sorthead"><span><MapPin size={14} />{b.zone}</span><span className="qf-sortcount">{b.items.length}</span></div>
+            <div className="qf-sortbody">
+              {b.items.length === 0 && <div className="qf-empty">Sin paquetes</div>}
+              {b.items.slice(0, 6).map((p) => (
+                <div key={p.id} className="qf-sortcard">
+                  <span className="qf-mono qf-sm">{p.id}</span>
+                  <span className="qf-sortdest">{p.recipient}</span>
+                  <span className="qf-chip">{p.route}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Page>
+  );
+}
+
+/* ---------- VISTA: Rutas y despacho ---------- */
+function Rutas({ routes, onDispatch, onOptimize, onOptimizeAll }) {
+  const [sel, setSel] = useState(routes[0].id);
+  const cur = routes.find((r) => r.id === sel);
+  return (
+    <Page title="Rutas y despacho" sub="Gestión de rutas, optimización con IA y salida a reparto por estación / flota / conductor." crumb="Operación"
+      action={<div style={{ display: 'flex', gap: 10 }}>
+        <button className="qf-btn ghost"><Plus size={16} />Nueva ruta</button>
+        <button className="qf-btn primary" onClick={onOptimizeAll}><Wand2 size={16} />Optimizar todas</button>
+      </div>}>
+      <div className="qf-grid-rt">
+        <Card title="Rutas" sub="Vista en tabla · filtra por estado">
+          <Table cols={['Ruta', 'Zona', 'Conductor', 'Estación', 'Progreso', 'Estado', '']}>
+            {routes.map((r) => {
+              const pct = Math.round((r.done / r.stops) * 100);
+              return (
+                <tr key={r.id} className={sel === r.id ? 'qf-rowsel' : ''} onClick={() => setSel(r.id)}>
+                  <td className="qf-mono">{r.id}</td><td>{r.zone}</td><td>{r.driver}</td><td>{r.station}</td>
+                  <td><div className="qf-minibar"><div style={{ width: `${pct}%` }} /></div></td>
+                  <td><span className="qf-badge"><StatusDot s={r.status} />{r.status}</span></td>
+                  <td>{r.status === 'Planificada'
+                    ? <button className="qf-btn xs primary" onClick={(e) => { e.stopPropagation(); onDispatch(r.id); }}><Send size={13} />Despachar</button>
+                    : <span className="qf-tag-live">● Live</span>}</td>
+                </tr>
+              );
+            })}
+          </Table>
+        </Card>
+
+        <RouteOptimizer route={cur} onOptimize={onOptimize} />
+      </div>
+    </Page>
+  );
+}
+
+function RouteOptimizer({ route, onOptimize }) {
+  const [calc, setCalc] = useState(false);
+  const depot = DEPOTS[route.station] || { x: 50, y: 35 };
+  const original = route.stopsList;
+  const optimized = useMemo(() => optimizeRoute(depot, original), [route.id]);
+  const order = route.optimized ? optimized : original;
+  const kmOrig = kmOf(depot, original), kmOptv = kmOf(depot, optimized);
+  const curKm = route.optimized ? kmOptv : kmOrig;
+  const savedKm = Math.max(0, kmOrig - kmOptv);
+  const savedPct = kmOrig ? Math.round((savedKm / kmOrig) * 100) : 0;
+  const W = 360, H = 232, sx = (v) => v / 100 * W, sy = (v) => v / 70 * H;
+  const linePts = [depot, ...order].map((p) => `${sx(p.x)},${sy(p.y)}`).join(' ');
+  const accent = route.optimized ? '#16A974' : '#EB6C27';
+  const run = () => {
+    if (route.optimized || calc) return;
+    setCalc(true);
+    setTimeout(() => {
+      setCalc(false);
+      onOptimize(route.id, `Ruta ${route.id} optimizada · −${savedKm.toFixed(1)} km · ${Math.max(1, minOf(kmOrig, original.length) - minOf(kmOptv, original.length))} min ✓`);
+    }, 950);
+  };
+  return (
+    <Card title={`Optimización · ${route.id}`} sub={route.optimized ? 'Ruta optimizada con IA' : 'Secuencia original — sin optimizar'}>
+      <div className="qf-optmap">
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%">
+          <rect width={W} height={H} rx="10" fill="#22284A" />
+          {Array.from({ length: 7 }).map((_, i) => <line key={'x' + i} x1={i * W / 7} y1="0" x2={i * W / 7} y2={H} stroke="#ffffff0a" />)}
+          {Array.from({ length: 5 }).map((_, i) => <line key={'y' + i} x1="0" y1={i * H / 5} x2={W} y2={i * H / 5} stroke="#ffffff0a" />)}
+          <polyline className="qf-optpath" key={route.optimized ? 'o' : 'r'} points={linePts} fill="none" stroke={accent} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
+          <rect x={sx(depot.x) - 6} y={sy(depot.y) - 6} width="12" height="12" rx="3" fill="#fff" />
+          {order.map((p, i) => (
+            <g key={i}>
+              <circle cx={sx(p.x)} cy={sy(p.y)} r="9" fill={accent} />
+              <text x={sx(p.x)} y={sy(p.y) + 3.4} textAnchor="middle" fontSize="9" fontFamily="IBM Plex Mono" fontWeight="600" fill="#fff">{i + 1}</text>
+            </g>
+          ))}
+        </svg>
+        {calc && <div className="qf-optcalc"><span className="qf-spin" />Calculando ruta óptima…</div>}
+        <div className="qf-optlegend"><span><i style={{ background: '#fff' }} />Depósito</span><span><i style={{ background: accent }} />{order.length} paradas</span></div>
+      </div>
+
+      <div className="qf-optmetrics">
+        <div><span>Distancia</span><b>{curKm.toFixed(1)} km {route.optimized && <s>{kmOrig.toFixed(1)}</s>}</b></div>
+        <div><span>Tiempo est.</span><b>{minOf(curKm, order.length)} min</b></div>
+        <div><span>Paradas</span><b>{order.length}</b></div>
+      </div>
+
+      {route.optimized
+        ? <div className="qf-optdone"><Wand2 size={15} />Optimizada · −{savedKm.toFixed(1)} km ({savedPct}%) menos recorrido</div>
+        : <button className="qf-btn primary block" onClick={run} disabled={calc}><Wand2 size={15} />{calc ? 'Optimizando…' : 'Optimizar ruta con IA'}</button>}
+    </Card>
+  );
+}
+
+/* ---------- VISTA: Seguimiento en vivo ---------- */
+function Live({ routes, tick, pkgs }) {
+  const active = routes.filter((r) => r.status === 'En ruta');
+  const drivers = active.map((r, i) => {
+    const path = PATHS[i % PATHS.length];
+    const seg = (tick + i * 2) % (path.length - 1);
+    const t = ((tick * 0.5 + i) % 1);
+    const a = path[seg], b = path[seg + 1] || path[seg];
+    return { ...r, x: a[0] + (b[0] - a[0]) * t, y: a[1] + (b[1] - a[1]) * t };
+  });
+  return (
+    <Page title="Seguimiento en vivo" sub="Lista de parcelas, rastreo de conductores y estado por paquete." crumb="Operación"
+      action={<span className="qf-tag-live big">● Tiempo real</span>}>
+      <div className="qf-grid-live">
+        <Card title="Mapa de operación" sub={`${drivers.length} conductores en reparto`} pad={false}>
+          <div className="qf-map">
+            <svg viewBox="0 0 980 600" className="qf-mapsvg">
+              <defs>
+                <radialGradient id="mg" cx="50%" cy="40%"><stop offset="0%" stopColor="#22284A" /><stop offset="100%" stopColor="#171B33" /></radialGradient>
+              </defs>
+              <rect width="980" height="600" fill="url(#mg)" />
+              {Array.from({ length: 14 }).map((_, i) => <line key={'v' + i} x1={i * 72} y1="0" x2={i * 72} y2="600" stroke="#ffffff0a" />)}
+              {Array.from({ length: 9 }).map((_, i) => <line key={'h' + i} x1="0" y1={i * 72} x2="980" y2={i * 72} stroke="#ffffff0a" />)}
+              {PATHS.slice(0, drivers.length).map((p, i) => (
+                <polyline key={i} points={p.map((q) => q.join(',')).join(' ')} fill="none" stroke="#EB6C2733" strokeWidth="2.5" strokeDasharray="2 7" strokeLinecap="round" />
+              ))}
+              {[[200, 160], [620, 360], [820, 200]].map((s, i) => (
+                <g key={i}><circle cx={s[0]} cy={s[1]} r="9" fill="#6E79B5" opacity="0.25" /><circle cx={s[0]} cy={s[1]} r="4" fill="#6E79B5" /></g>
+              ))}
+              {drivers.map((d, i) => (
+                <g key={d.id} style={{ transition: 'transform 2s linear' }} transform={`translate(${d.x},${d.y})`}>
+                  <circle r="16" fill="#EB6C27" opacity="0.18"><animate attributeName="r" values="12;20;12" dur="2.4s" repeatCount="indefinite" /></circle>
+                  <circle r="7" fill="#EB6C27" stroke="#fff" strokeWidth="2" />
+                  <text x="12" y="4" fill="#D7DBEC" fontSize="11" fontFamily="IBM Plex Mono">{d.id}</text>
+                </g>
+              ))}
+            </svg>
+            <div className="qf-maplegend"><span><i style={{ background: C.blue }} />Conductor</span><span><i style={{ background: C.blueLt }} />Estación</span></div>
+          </div>
+        </Card>
+
+        <Card title="Parcelas en ruta" sub="Estado por paquete y secuencia">
+          <div className="qf-parcels">
+            {pkgs.filter((p) => p.status === 'En ruta').slice(0, 10).map((p) => (
+              <div key={p.id} className="qf-parcel">
+                <span className="qf-pulse2" />
+                <div className="qf-pinfo"><span className="qf-mono qf-sm">{p.id}</span><span className="qf-pdest">{p.recipient} · {p.zone}</span></div>
+                <span className="qf-eta"><Clock size={12} />{p.eta}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </Page>
+  );
+}
+
+/* ---------- VISTA: POD ---------- */
+function Pod({ pkgs, setPkgs, flash }) {
+  const delivered = pkgs.filter((p) => p.status === 'Entregado');
+  const toggle = (id) => {
+    setPkgs((arr) => arr.map((p) => p.id === id ? { ...p, pod: p.pod === 'válido' ? 'inválido' : 'válido' } : p));
+    flash(`POD de ${id} actualizado`);
+  };
+  return (
+    <Page title="Prueba de entrega (POD)" sub="Captura de foto por entrega, control de POD inválido y robos." crumb="Operación">
+      <div className="qf-stat3">
+        <MiniStat icon={Camera} label="POD capturados" val={delivered.length} col={C.green} />
+        <MiniStat icon={ShieldCheck} label="POD válidos" val={delivered.filter(p => p.pod === 'válido').length} col={C.blue} />
+        <MiniStat icon={ImageOff} label="POD inválidos" val={delivered.filter(p => p.pod === 'inválido').length} col={C.red} />
+      </div>
+      <div className="qf-podgrid">
+        {delivered.slice(0, 12).map((p, i) => {
+          const ok = p.pod === 'válido';
+          return (
+            <div key={p.id} className="qf-podcard">
+              <div className="qf-podphoto" style={{ background: `linear-gradient(135deg, ${ok ? '#22325A' : '#3a2424'}, #22284A)` }}>
+                <Camera size={26} color="#ffffff55" />
+                <span className="qf-podbadge" style={{ background: ok ? C.green : C.red }}>{ok ? 'Válido' : 'Inválido'}</span>
+              </div>
+              <div className="qf-podinfo">
+                <span className="qf-mono qf-sm">{p.id}</span>
+                <span className="qf-pdest">{p.recipient}</span>
+                <button className="qf-btn xs ghost" onClick={() => toggle(p.id)}>Marcar {ok ? 'inválido' : 'válido'}</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Page>
+  );
+}
+
+/* ---------- VISTA: Excepciones ---------- */
+function Excepciones({ excs, onResolve }) {
+  return (
+    <Page title="Devoluciones y excepciones" sub="Centro de paquetes con problemas: reversa, incidencias y robos." crumb="Control">
+      <Card title="Centro de problemas" sub="Resuelve incidencias y gestiona devoluciones">
+        <Table cols={['Guía', 'Destinatario', 'Zona', 'Tipo', 'Detalle', 'Estado', '']}>
+          {excs.map((e) => (
+            <tr key={e.id} style={{ opacity: e.resolved ? 0.5 : 1 }}>
+              <td className="qf-mono">{e.id}</td><td>{e.recipient}</td><td>{e.zone}</td>
+              <td><span className="qf-exctype" style={{ color: C[e.sev] }}><Circle size={8} fill={C[e.sev]} strokeWidth={0} />{e.type}</span></td>
+              <td className="qf-muted">{e.detail}</td>
+              <td>{e.resolved ? <span className="qf-badge"><StatusDot s="Entregado" />Resuelto</span> : <span className="qf-badge"><AlertTriangle size={12} color={C.amber} />Abierto</span>}</td>
+              <td>{!e.resolved && <button className="qf-btn xs primary" onClick={() => onResolve(e.id)}>Resolver</button>}</td>
+            </tr>
+          ))}
+        </Table>
+      </Card>
+    </Page>
+  );
+}
+
+/* ---------- VISTA: BI ---------- */
+function BI({ counts }) {
+  const week = Array.from({ length: 7 }, (_, i) => ({ d: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'][i], entregas: rand(18000, 28000), sla: rand(92, 98) }));
+  const byZone = ZONES.map((z) => ({ z, v: rand(2200, 6800) }));
+  const pieData = [
+    { name: 'Entregado', value: 62, c: C.green }, { name: 'En ruta', value: 24, c: C.blue },
+    { name: 'Clasificado', value: 9, c: C.blueLt }, { name: 'Excepción', value: 5, c: C.red },
+  ];
+  return (
+    <Page title="Business Intelligence" sub="Tableros y reportería para decidir con datos en vivo." crumb="Control">
+      <div className="qf-grid2">
+        <Card title="Entregas por día" sub="Últimos 7 días">
+          <div style={{ height: 240 }}>
+            <ResponsiveContainer>
+              <BarChart data={week} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
+                <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={tipStyle} cursor={{ fill: '#EB6C270F' }} />
+                <Bar dataKey="entregas" fill={C.blue} radius={[5, 5, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+        <Card title="Estado de paquetes" sub="Distribución actual">
+          <div style={{ height: 240, display: 'flex', alignItems: 'center' }}>
+            <ResponsiveContainer>
+              <PieChart>
+                <Pie data={pieData} dataKey="value" innerRadius={58} outerRadius={92} paddingAngle={2}>
+                  {pieData.map((e, i) => <Cell key={i} fill={e.c} />)}
+                </Pie>
+                <Tooltip contentStyle={tipStyle} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="qf-legend">{pieData.map((e) => <div key={e.name}><i style={{ background: e.c }} />{e.name}<b>{e.value}%</b></div>)}</div>
+          </div>
+        </Card>
+      </div>
+      <div className="qf-grid2">
+        <Card title="Volumen por zona" sub="Paquetes entregados">
+          <div style={{ height: 220 }}>
+            <ResponsiveContainer>
+              <BarChart layout="vertical" data={byZone} margin={{ top: 0, right: 16, left: 12, bottom: 0 }}>
+                <XAxis type="number" hide /><YAxis dataKey="z" type="category" tick={{ fontSize: 12, fill: C.ink }} axisLine={false} tickLine={false} width={70} />
+                <Tooltip contentStyle={tipStyle} cursor={{ fill: '#EB6C270F' }} />
+                <Bar dataKey="v" fill={C.blueLt} radius={[0, 5, 5, 0]} barSize={16} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+        <Card title="Cumplimiento SLA" sub="% entregas a tiempo">
+          <div style={{ height: 220 }}>
+            <ResponsiveContainer>
+              <LineChart data={week} margin={{ top: 10, right: 12, left: -18, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
+                <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} />
+                <YAxis domain={[85, 100]} tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={tipStyle} />
+                <Line type="monotone" dataKey="sla" stroke={C.green} strokeWidth={2.5} dot={{ r: 3, fill: C.green }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+    </Page>
+  );
+}
+
+/* ---------- VISTA: App de conductor ---------- */
+function Driver({ flash }) {
+  const [stops, setStops] = useState([
+    { id: trackId(80), addr: 'Av. Francisco de Miranda, Chacao', dest: pick(NAMES), done: true },
+    { id: trackId(81), addr: 'Calle Madrid, Las Mercedes', dest: pick(NAMES), done: true },
+    { id: trackId(82), addr: 'Av. Principal, Los Palos Grandes', dest: pick(NAMES), done: false },
+    { id: trackId(83), addr: 'Calle El Ávila, Altamira', dest: pick(NAMES), done: false },
+    { id: trackId(84), addr: 'Av. Río de Janeiro, Las Mercedes', dest: pick(NAMES), done: false },
+  ]);
+  const next = stops.find((s) => !s.done);
+  const deliver = () => {
+    if (!next) return;
+    setStops((arr) => arr.map((s) => s.id === next.id ? { ...s, done: true } : s));
+    flash(`Entrega registrada · POD capturado ✓`);
+  };
+  const done = stops.filter((s) => s.done).length;
+  return (
+    <Page title="App de conductor" sub="Aplicación de campo: secuencia de paradas y captura de POD." crumb="Campo">
+      <div className="qf-phonewrap">
+        <div className="qf-phone">
+          <div className="qf-phonenotch" />
+          <div className="qf-phonehdr">
+            <div><div className="qf-phtitle">Ruta R-114</div><div className="qf-phsub">{done}/{stops.length} paradas · Chacao</div></div>
+            <div className="qf-phbattery"><Battery size={16} /> 84%</div>
+          </div>
+          <div className="qf-phprogress"><div style={{ width: `${(done / stops.length) * 100}%` }} /></div>
+
+          {next ? (
+            <div className="qf-phnext">
+              <span className="qf-phnextlabel"><Navigation size={13} />Próxima parada</span>
+              <div className="qf-mono qf-phid">{next.id}</div>
+              <div className="qf-phaddr">{next.addr}</div>
+              <div className="qf-phdest">{next.dest}</div>
+              <div className="qf-phactions">
+                <button className="qf-btn primary block" onClick={deliver}><Camera size={16} />Capturar POD y entregar</button>
+                <button className="qf-btn ghost block"><Phone size={15} />Llamar</button>
+              </div>
+            </div>
+          ) : <div className="qf-phdone"><CheckCircle2 size={34} color={C.green} /><div>Ruta completada</div><span>5/5 entregas con POD</span></div>}
+
+          <div className="qf-phlist">
+            {stops.map((s) => (
+              <div key={s.id} className={`qf-phstop ${s.done ? 'done' : ''}`}>
+                {s.done ? <CheckCircle2 size={16} color={C.green} /> : <Circle size={16} color={C.muted} />}
+                <div><span className="qf-mono qf-sm">{s.id}</span><span className="qf-phstopaddr">{s.addr}</span></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Page>
+  );
+}
+
+/* ---------- Componentes compartidos ---------- */
+function Page({ title, sub, crumb, action, children }) {
+  return (
+    <div className="qf-page">
+      <div className="qf-pagehdr">
+        <div>
+          <div className="qf-crumb">{crumb}</div>
+          <h1 className="qf-h1">{title}</h1>
+          <p className="qf-sub">{sub}</p>
+        </div>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+function Card({ title, sub, children, pad = true }) {
+  return (
+    <div className="qf-card">
+      <div className="qf-cardhdr"><div><div className="qf-cardtitle">{title}</div><div className="qf-cardsub">{sub}</div></div></div>
+      <div style={{ padding: pad ? '0 18px 18px' : 0 }}>{children}</div>
+    </div>
+  );
+}
+function Table({ cols, children }) {
+  return (
+    <div className="qf-tablewrap">
+      <table className="qf-table"><thead><tr>{cols.map((c, i) => <th key={i}>{c}</th>)}</tr></thead><tbody>{children}</tbody></table>
+    </div>
+  );
+}
+function MiniStat({ icon: Icon, label, val, col }) {
+  return (
+    <div className="qf-ministat">
+      <span className="qf-ms-ico" style={{ background: col + '1A', color: col }}><Icon size={18} /></span>
+      <div><div className="qf-ms-val">{val}</div><div className="qf-ms-label">{label}</div></div>
+    </div>
+  );
+}
+function DetRow({ k, v }) { return <div className="qf-detrow"><span>{k}</span><b>{v}</b></div>; }
+function MiniMap({ zone, stops, done }) {
+  return (
+    <div className="qf-minimap">
+      <svg viewBox="0 0 400 180" width="100%">
+        <rect width="400" height="180" rx="8" fill="#22284A" />
+        <polyline points="30,140 110,90 180,120 260,60 340,100" fill="none" stroke="#EB6C2755" strokeWidth="2.5" strokeDasharray="2 6" />
+        {[[30, 140], [110, 90], [180, 120], [260, 60], [340, 100]].map((p, i) => (
+          <circle key={i} cx={p[0]} cy={p[1]} r="5" fill={i < (done / stops) * 5 ? C.green : C.blue} stroke="#fff" strokeWidth="1.5" />
+        ))}
+        <text x="16" y="24" fill="#6E79B5" fontSize="12" fontFamily="IBM Plex Mono">{zone}</text>
+      </svg>
+    </div>
+  );
+}
+
+const tipStyle = { background: '#22284A', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontFamily: 'Arimo' };
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Arimo:wght@400;500;600;700&family=Saira+Condensed:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+.qf-root{display:flex;height:100vh;min-height:720px;font-family:'Arimo',sans-serif;background:${C.paper};color:${C.ink};overflow:hidden}
+.qf-mono{font-family:'IBM Plex Mono',monospace}
+.qf-sm{font-size:12px}
+.qf-muted{color:${C.muted}}
+
+/* sidebar */
+.qf-side{width:248px;flex-shrink:0;background:${C.navy900};color:#cdd9e6;display:flex;flex-direction:column;border-right:1px solid #ffffff0f}
+.qf-brand{display:flex;align-items:center;gap:11px;padding:20px 18px;border-bottom:1px solid #ffffff0f}
+.qf-logo{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,${C.blue},#C4551B);color:#fff;font-family:'Saira Condensed';font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center}
+.qf-brandname{font-family:'Saira Condensed';font-weight:700;color:#fff;font-size:16px}
+.qf-brandsub{font-size:11px;color:#7d93aa;letter-spacing:.04em}
+.qf-nav{flex:1;overflow-y:auto;padding:14px 12px}
+.qf-navgroup{margin-bottom:16px}
+.qf-navlabel{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#5d7390;padding:0 10px 8px;font-weight:600}
+.qf-navbtn{width:100%;display:flex;align-items:center;gap:11px;padding:9px 11px;border:none;background:none;color:#aebfd0;font-family:inherit;font-size:13.5px;border-radius:9px;cursor:pointer;text-align:left;transition:.15s;font-weight:500}
+.qf-navbtn:hover{background:#ffffff0c;color:#fff}
+.qf-navbtn.active{background:${C.blue};color:#fff;box-shadow:0 4px 14px #eb6c2755}
+.qf-sidefoot{padding:14px 18px;border-top:1px solid #ffffff0f}
+.qf-livebadge{display:flex;align-items:center;gap:8px;font-size:12px;color:#9fb3c7;font-weight:500}
+.qf-pulse{width:8px;height:8px;border-radius:50%;background:${C.green};box-shadow:0 0 0 0 ${C.green};animation:pulse 1.8s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 #16a97488}70%{box-shadow:0 0 0 7px #16a97400}100%{box-shadow:0 0 0 0 #16a97400}}
+.qf-foottext{font-size:10.5px;color:#566b80;margin-top:7px}
+
+/* main */
+.qf-main{flex:1;display:flex;flex-direction:column;min-width:0}
+.qf-top{height:62px;flex-shrink:0;background:#fff;border-bottom:1px solid ${C.line};display:flex;align-items:center;justify-content:space-between;padding:0 22px}
+.qf-topclient{display:flex;align-items:center;gap:12px}
+.qf-clientchip{font-family:'Saira Condensed';font-weight:700;font-size:15px}
+.qf-station{display:flex;align-items:center;gap:6px;background:${C.paper};border:1px solid ${C.line};border-radius:8px;padding:7px 11px;font-family:inherit;font-size:12.5px;color:${C.ink};cursor:pointer;font-weight:500}
+.qf-topright{display:flex;align-items:center;gap:12px}
+.qf-search{display:flex;align-items:center;gap:8px;background:${C.paper};border:1px solid ${C.line};border-radius:9px;padding:8px 12px;width:300px;color:${C.muted}}
+.qf-search input{border:none;background:none;outline:none;font-family:inherit;font-size:13px;color:${C.ink};width:100%}
+.qf-iconbtn{position:relative;width:38px;height:38px;border-radius:9px;border:1px solid ${C.line};background:#fff;cursor:pointer;color:${C.ink};display:flex;align-items:center;justify-content:center}
+.qf-notif{position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:${C.red}}
+.qf-avatar{width:38px;height:38px;border-radius:9px;background:linear-gradient(135deg,${C.navy700},${C.navy600});color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center}
+
+.qf-content{flex:1;overflow-y:auto;padding:26px 28px}
+.qf-page{max-width:1240px;margin:0 auto}
+.qf-pagehdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px;gap:16px}
+.qf-crumb{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:${C.blue};font-weight:600;margin-bottom:6px}
+.qf-h1{font-family:'Saira Condensed';font-size:26px;font-weight:700;letter-spacing:-.01em}
+.qf-sub{color:${C.muted};font-size:13.5px;margin-top:4px;max-width:620px}
+
+/* buttons */
+.qf-btn{display:inline-flex;align-items:center;gap:7px;border-radius:9px;padding:9px 15px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:.15s;white-space:nowrap}
+.qf-btn.primary{background:${C.blue};color:#fff}.qf-btn.primary:hover{background:#C4551B}
+.qf-btn.ghost{background:#fff;border-color:${C.line};color:${C.ink}}.qf-btn.ghost:hover{border-color:${C.blue};color:${C.blue}}
+.qf-btn.xs{padding:6px 10px;font-size:11.5px;border-radius:7px}
+.qf-btn.block{width:100%;justify-content:center}
+
+/* kpis */
+.qf-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+.qf-kpi{background:#fff;border:1px solid ${C.line};border-radius:14px;padding:17px;animation:rise .5s both}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.qf-kpi-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}
+.qf-kpi-ico{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center}
+.qf-semaforo{width:9px;height:9px;border-radius:50%}
+.qf-kpi-val{font-family:'Saira Condensed';font-size:28px;font-weight:700;letter-spacing:-.02em}
+.qf-kpi-label{font-size:13px;font-weight:600;margin-top:2px}
+.qf-kpi-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.qf-kpi-sub{font-size:11.5px;color:${C.muted}}
+.qf-kpi-d{font-size:12px;font-weight:600}
+
+.qf-grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.qf-grid-rt{display:grid;grid-template-columns:1.5fr 1fr;gap:16px}
+.qf-grid-live{display:grid;grid-template-columns:1.7fr 1fr;gap:16px}
+
+/* card */
+.qf-card{background:#fff;border:1px solid ${C.line};border-radius:14px}
+.qf-cardhdr{padding:16px 18px 12px}
+.qf-cardtitle{font-family:'Saira Condensed';font-weight:700;font-size:15px}
+.qf-cardsub{font-size:12px;color:${C.muted};margin-top:2px}
+
+/* tables */
+.qf-tablewrap{overflow-x:auto}
+.qf-table{width:100%;border-collapse:collapse;font-size:13px}
+.qf-table th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:${C.muted};font-weight:600;padding:9px 10px;border-bottom:1px solid ${C.line}}
+.qf-table td{padding:11px 10px;border-bottom:1px solid #eef3f8}
+.qf-table tbody tr{cursor:default;transition:.12s}
+.qf-table tbody tr:hover{background:#f7fafd}
+.qf-rowsel{background:#eef5fc !important}
+.qf-badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500}
+.qf-dot{width:8px;height:8px;border-radius:50%}
+.qf-minibar{width:80px;height:6px;background:${C.line};border-radius:4px;overflow:hidden}
+.qf-minibar>div{height:100%;background:${C.blue}}
+.qf-tag-live{color:${C.green};font-size:12px;font-weight:600}
+.qf-tag-live.big{background:#16a9741a;padding:7px 13px;border-radius:8px}
+
+/* ministat */
+.qf-stat3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}
+.qf-ministat{background:#fff;border:1px solid ${C.line};border-radius:13px;padding:16px;display:flex;align-items:center;gap:13px}
+.qf-ms-ico{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.qf-ms-val{font-family:'Saira Condensed';font-size:24px;font-weight:700}
+.qf-ms-label{font-size:12.5px;color:${C.muted}}
+
+/* route health */
+.qf-routehealth{display:flex;flex-direction:column;gap:11px}
+.qf-rh{display:grid;grid-template-columns:50px 80px 1fr 44px;align-items:center;gap:10px;font-size:12.5px}
+.qf-rh-id{font-family:'IBM Plex Mono';font-weight:500}
+.qf-rh-zone{color:${C.muted}}
+.qf-rh-bar{height:7px;background:${C.line};border-radius:5px;overflow:hidden}
+.qf-rh-bar>div{height:100%;border-radius:5px;transition:width .4s}
+.qf-rh-pct{font-family:'IBM Plex Mono';font-weight:600;text-align:right;font-size:12px}
+
+/* sort */
+.qf-sortgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.qf-sortcol{background:#fff;border:1px solid ${C.line};border-radius:13px;overflow:hidden}
+.qf-sorthead{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;background:${C.paper};border-bottom:1px solid ${C.line};font-weight:600;font-size:13.5px}
+.qf-sorthead>span:first-child{display:flex;align-items:center;gap:7px}
+.qf-sortcount{background:${C.blue};color:#fff;font-family:'IBM Plex Mono';font-size:11px;padding:2px 8px;border-radius:20px}
+.qf-sortbody{padding:11px;display:flex;flex-direction:column;gap:8px;min-height:80px}
+.qf-sortcard{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;background:${C.paper};border-radius:9px}
+.qf-sortdest{font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qf-chip{font-family:'IBM Plex Mono';font-size:10.5px;background:#fff;border:1px solid ${C.line};padding:2px 7px;border-radius:6px;color:${C.blue}}
+.qf-empty{color:${C.muted};font-size:12px;text-align:center;padding:18px 0}
+
+/* detail */
+.qf-detrows{padding:14px 0 0}
+.qf-detrow{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #eef3f8;font-size:13px}
+.qf-detrow span{color:${C.muted}}
+
+/* map */
+.qf-map{position:relative;border-radius:0 0 14px 14px;overflow:hidden}
+.qf-mapsvg{width:100%;display:block}
+.qf-maplegend{position:absolute;bottom:12px;left:12px;display:flex;gap:14px;background:#171B33cc;padding:7px 12px;border-radius:8px;font-size:11px;color:#cdd9e6}
+.qf-maplegend span{display:flex;align-items:center;gap:6px}
+.qf-maplegend i{width:9px;height:9px;border-radius:50%}
+.qf-parcels{display:flex;flex-direction:column;gap:9px;max-height:430px;overflow-y:auto}
+.qf-parcel{display:flex;align-items:center;gap:11px;padding:11px;background:${C.paper};border-radius:10px}
+.qf-pulse2{width:9px;height:9px;border-radius:50%;background:${C.blue};animation:pulse 1.8s infinite;flex-shrink:0}
+.qf-pinfo{flex:1;display:flex;flex-direction:column}
+.qf-pdest{font-size:12px;color:${C.muted}}
+.qf-eta{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono';font-size:11.5px;color:${C.blue};font-weight:500}
+
+/* pod */
+.qf-podgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.qf-podcard{background:#fff;border:1px solid ${C.line};border-radius:13px;overflow:hidden}
+.qf-podphoto{height:120px;display:flex;align-items:center;justify-content:center;position:relative}
+.qf-podbadge{position:absolute;top:9px;right:9px;color:#fff;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:6px}
+.qf-podinfo{padding:12px;display:flex;flex-direction:column;gap:6px}
+
+/* exceptions */
+.qf-exctype{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:12.5px}
+
+/* legend (pie) */
+.qf-legend{display:flex;flex-direction:column;gap:10px;padding-right:8px;min-width:130px}
+.qf-legend div{display:flex;align-items:center;gap:8px;font-size:12.5px;color:${C.ink}}
+.qf-legend i{width:10px;height:10px;border-radius:3px}
+.qf-legend b{margin-left:auto;font-family:'IBM Plex Mono'}
+
+/* minimap */
+.qf-minimap{border-radius:10px;overflow:hidden;margin-bottom:4px}
+
+/* phone */
+.qf-phonewrap{display:flex;justify-content:center;padding:8px 0}
+.qf-phone{width:340px;background:${C.navy900};border-radius:34px;padding:16px;border:6px solid #2C3463;box-shadow:0 30px 60px #171B3340;position:relative;color:#cdd9e6}
+.qf-phonenotch{width:120px;height:6px;background:#3A4377;border-radius:6px;margin:2px auto 16px}
+.qf-phonehdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.qf-phtitle{font-family:'Saira Condensed';font-weight:700;color:#fff;font-size:18px}
+.qf-phsub{font-size:11.5px;color:#7d93aa}
+.qf-phbattery{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono';font-size:11px;color:#9fb3c7}
+.qf-phprogress{height:6px;background:#ffffff14;border-radius:5px;overflow:hidden;margin-bottom:16px}
+.qf-phprogress>div{height:100%;background:${C.blue};transition:width .4s}
+.qf-phnext{background:#22284A;border:1px solid #ffffff14;border-radius:16px;padding:16px;margin-bottom:14px}
+.qf-phnextlabel{display:flex;align-items:center;gap:6px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:${C.blueLt};font-weight:600}
+.qf-phid{font-size:13px;color:#9fb3c7;margin-top:10px}
+.qf-phaddr{font-family:'Saira Condensed';font-weight:600;color:#fff;font-size:16px;margin-top:4px;line-height:1.3}
+.qf-phdest{font-size:13px;color:#aebfd0;margin-top:5px}
+.qf-phactions{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.qf-phdone{background:#22284A;border-radius:16px;padding:26px;text-align:center;margin-bottom:14px;color:#fff;display:flex;flex-direction:column;align-items:center;gap:8px;font-family:'Saira Condensed';font-weight:600}
+.qf-phdone span{font-family:'Arimo';font-weight:400;font-size:12.5px;color:#7d93aa}
+.qf-phlist{display:flex;flex-direction:column;gap:3px}
+.qf-phstop{display:flex;align-items:center;gap:11px;padding:11px 8px;border-radius:10px}
+.qf-phstop>div{display:flex;flex-direction:column}
+.qf-phstop.done{opacity:.5}
+.qf-phstopaddr{font-size:12px;color:#aebfd0}
+
+/* toast */
+.qf-toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:${C.navy900};color:#fff;padding:12px 20px;border-radius:11px;font-size:13px;font-weight:500;display:flex;align-items:center;gap:9px;box-shadow:0 16px 40px #171B3355;animation:rise .35s both;z-index:50}
+.qf-toast svg{color:${C.green}}
+
+/* presentación */
+.qf-present{position:fixed;inset:0;z-index:80;pointer-events:none;font-family:'Arimo',sans-serif}
+.qf-pbar{position:fixed;top:18px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:9px;background:#171B33ee;backdrop-filter:blur(8px);border:1px solid #ffffff1f;padding:8px 12px;border-radius:14px;pointer-events:auto;box-shadow:0 12px 30px #171B3366;z-index:90}
+.qf-pbar button{width:34px;height:34px;border-radius:9px;border:none;background:#ffffff12;color:#cdd9e6;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s}
+.qf-pbar button:hover:not(:disabled){background:${C.blue};color:#fff}
+.qf-pbar button:disabled{opacity:.3;cursor:default}
+.qf-pdots{display:flex;gap:6px;margin:0 6px}
+.qf-pdots span{width:8px;height:8px;border-radius:50%;background:#ffffff2e;cursor:pointer;transition:.15s}
+.qf-pdots span.on{background:${C.blue};transform:scale(1.3)}
+.qf-pcount{font-family:'IBM Plex Mono';font-size:12px;color:#9fb3c7;margin:0 4px}
+.qf-pexit{width:auto !important;padding:0 13px !important;gap:6px;font-family:inherit;font-size:12.5px;font-weight:600}
+.qf-pnarr{position:fixed;left:34px;bottom:34px;width:430px;max-width:calc(100vw - 60px);background:#171B33f2;backdrop-filter:blur(10px);border:1px solid #ffffff1f;border-radius:18px;padding:24px;color:#fff;pointer-events:auto;box-shadow:0 24px 60px #0a162777;animation:pcard .4s both}
+@keyframes pcard{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.qf-pkicker{font-size:11px;text-transform:uppercase;letter-spacing:.12em;font-weight:700;margin-bottom:9px}
+.qf-pnarr h2{font-family:'Saira Condensed';font-size:21px;font-weight:700;line-height:1.2;margin-bottom:14px}
+.qf-pnarr ul{list-style:none;display:flex;flex-direction:column;gap:9px;margin-bottom:18px}
+.qf-pnarr li{display:flex;align-items:flex-start;gap:9px;font-size:13.5px;color:#cdd9e6;line-height:1.4}
+.qf-pnarr li svg{color:${C.green};flex-shrink:0;margin-top:2px}
+.qf-slide{position:fixed;inset:0;pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;color:#fff;overflow:hidden;background:radial-gradient(120% 120% at 72% 8%,#2C3463,#171B33 58%)}
+.qf-slide::before{content:'';position:absolute;inset:0;background-image:linear-gradient(#ffffff0a 1px,transparent 1px),linear-gradient(90deg,#ffffff0a 1px,transparent 1px);background-size:54px 54px;-webkit-mask-image:radial-gradient(circle at 72% 18%,#000,transparent 72%);mask-image:radial-gradient(circle at 72% 18%,#000,transparent 72%)}
+.qf-slide>*{position:relative;animation:pcard .5s both}
+.qf-slogo{width:58px;height:58px;border-radius:16px;background:linear-gradient(135deg,${C.blue},#C4551B);font-family:'Saira Condensed';font-weight:800;font-size:21px;display:flex;align-items:center;justify-content:center;margin-bottom:26px;box-shadow:0 12px 30px #eb6c2755}
+.qf-skicker{font-size:12px;text-transform:uppercase;letter-spacing:.16em;color:${C.blueLt};font-weight:600;margin-bottom:16px}
+.qf-stitle{font-family:'Saira Condensed';font-size:46px;font-weight:800;letter-spacing:-.02em;line-height:1.05;max-width:780px;margin-bottom:18px}
+.qf-stitle b{color:${C.blueLt}}
+.qf-ssub{font-size:16px;color:#aebfd0;max-width:560px;line-height:1.5;margin-bottom:30px}
+.qf-sstats{display:flex;gap:14px;margin-bottom:32px;flex-wrap:wrap;justify-content:center}
+.qf-sstat{background:#ffffff0c;border:1px solid #ffffff1a;border-radius:14px;padding:15px 22px;min-width:118px}
+.qf-sstat b{display:block;font-family:'Saira Condensed';font-size:30px;font-weight:800}
+.qf-sstat span{font-size:12px;color:#9fb3c7}
+.qf-schip{display:inline-flex;align-items:center;gap:8px;border:1px solid #ffffff2e;border-radius:30px;padding:9px 18px;font-size:13px;color:#cdd9e6;margin-bottom:30px}
+.qf-schip b{color:#fff}
+.qf-scontact{display:flex;gap:30px;flex-wrap:wrap;justify-content:center;color:#9fb3c7;font-size:13.5px}
+.qf-scontact span{display:flex;flex-direction:column;gap:3px}
+.qf-scontact b{color:#fff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+.qf-sbtn{display:inline-flex;align-items:center;gap:9px;background:${C.blue};color:#fff;border:none;border-radius:11px;padding:14px 26px;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;transition:.15s}
+.qf-sbtn:hover{background:#C4551B;transform:translateY(-1px)}
+
+/* logo ARJ */
+.arj-logo{display:flex;align-items:center;gap:9px}
+.arj-logo svg{flex-shrink:0}
+.arj-word{display:flex;flex-direction:column;line-height:.95;font-family:'Saira Condensed','Arimo',sans-serif}
+.arj-arj{font-weight:800;font-style:italic;font-size:1.5em;letter-spacing:.01em}
+.arj-sub{font-weight:600;font-style:italic;font-size:.42em;letter-spacing:.14em;opacity:.82;margin-top:3px;text-transform:uppercase}
+
+/* optimización de ruta */
+.qf-optbox{margin-top:14px}
+.qf-optdone{display:flex;align-items:center;gap:9px;background:#16a9741a;color:${C.green};border:1px solid #16a97433;border-radius:10px;padding:12px 14px;font-size:13px;font-weight:600}
+.qf-optdone svg{flex-shrink:0}
+.qf-optmap{position:relative;border-radius:10px;overflow:hidden;margin-bottom:14px}
+.qf-optmap svg{display:block;width:100%}
+.qf-optpath{stroke-dasharray:1600;animation:draw .85s ease both}
+@keyframes draw{from{stroke-dashoffset:1600}to{stroke-dashoffset:0}}
+.qf-optcalc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:11px;background:#171B33cc;color:#fff;font-size:13px;font-weight:600}
+.qf-spin{width:18px;height:18px;border-radius:50%;border:2.5px solid #ffffff33;border-top-color:#EB6C27;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.qf-optlegend{position:absolute;bottom:10px;left:10px;display:flex;gap:12px;background:#171B33cc;padding:6px 10px;border-radius:8px;font-size:11px;color:#D7DBEC}
+.qf-optlegend span{display:flex;align-items:center;gap:6px}
+.qf-optlegend i{width:9px;height:9px;border-radius:3px}
+.qf-optmetrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.qf-optmetrics>div{background:${C.paper};border-radius:10px;padding:11px 13px}
+.qf-optmetrics span{font-size:11px;color:${C.muted};display:block;margin-bottom:3px}
+.qf-optmetrics b{font-family:'Saira Condensed';font-size:18px;font-weight:700;display:flex;align-items:baseline;gap:6px}
+.qf-optmetrics s{font-size:12px;color:${C.muted};font-weight:400}
+
+/* mapeo CSV */
+.qf-mapgrid{display:flex;flex-direction:column;gap:11px}
+.qf-maprow{display:grid;grid-template-columns:170px 1fr 130px;align-items:center;gap:12px}
+.qf-maprow label{font-size:13px;font-weight:600;color:${C.ink}}
+.qf-maprow select{padding:9px 11px;border:1px solid ${C.line};border-radius:9px;font-family:inherit;font-size:13px;color:${C.ink};background:#fff;cursor:pointer}
+.qf-mappreview{font-family:'IBM Plex Mono';font-size:11.5px;color:${C.muted};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:${C.paper};padding:6px 9px;border-radius:7px}
+
+/* chat */
+.qf-chat{display:grid;grid-template-columns:210px 1fr;gap:16px;height:calc(100vh - 200px);min-height:440px}
+.qf-chanlist{background:#fff;border:1px solid ${C.line};border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:4px}
+.qf-chan{display:flex;align-items:center;gap:8px;padding:10px 12px;border:none;background:none;border-radius:9px;font-family:inherit;font-size:14px;color:${C.muted};cursor:pointer;text-align:left;font-weight:500}
+.qf-chan:hover{background:${C.paper};color:${C.ink}}
+.qf-chan.active{background:${C.blue};color:#fff}
+.qf-chatmain{background:#fff;border:1px solid ${C.line};border-radius:14px;display:flex;flex-direction:column;overflow:hidden}
+.qf-chathdr{display:flex;align-items:center;gap:8px;padding:15px 18px;border-bottom:1px solid ${C.line};font-family:'Saira Condensed';font-weight:700;font-size:16px;text-transform:lowercase}
+.qf-chatmsgs{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:15px}
+.qf-msg{display:flex;gap:11px;max-width:80%}
+.qf-msg.me{flex-direction:row-reverse;align-self:flex-end}
+.qf-msgava{width:34px;height:34px;border-radius:9px;color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;text-transform:uppercase}
+.qf-msgbody{display:flex;flex-direction:column;gap:4px}
+.qf-msg.me .qf-msgbody{align-items:flex-end}
+.qf-msgmeta{display:flex;gap:8px;align-items:baseline;font-size:12px}
+.qf-msgmeta b{font-weight:600}
+.qf-msgmeta span{color:${C.muted};font-size:11px}
+.qf-msgtext{background:${C.paper};padding:9px 13px;border-radius:11px;font-size:13.5px;line-height:1.4}
+.qf-msg.me .qf-msgtext{background:${C.blue};color:#fff}
+.qf-chatinput{display:flex;gap:10px;padding:14px 16px;border-top:1px solid ${C.line}}
+.qf-chatinput input{flex:1;border:1px solid ${C.line};border-radius:10px;padding:10px 13px;font-family:inherit;font-size:13.5px;outline:none}
+.qf-chatinput input:focus{border-color:${C.blue}}
+
+@media(max-width:1100px){.qf-grid2,.qf-grid-rt,.qf-grid-live,.qf-podgrid,.qf-sortgrid,.qf-kpis,.qf-stat3{grid-template-columns:1fr 1fr}}
+@media(max-width:900px){
+  .qf-side{width:64px}
+  .qf-navbtn span,.qf-navlabel,.qf-foottext,.qf-livebadge,.arj-word{display:none}
+  .qf-brand{justify-content:center;padding:18px 0}
+  .qf-navbtn{justify-content:center;padding:11px}
+  .qf-navgroup{margin-bottom:10px}
+  .qf-sidefoot{display:flex;justify-content:center}
+  .qf-chat{grid-template-columns:1fr;height:auto}
+}
+@media(max-width:680px){
+  .qf-content{padding:16px}
+  .qf-grid2,.qf-grid-rt,.qf-grid-live,.qf-podgrid,.qf-sortgrid,.qf-kpis,.qf-stat3{grid-template-columns:1fr}
+  .qf-search{display:none}
+  .qf-h1{font-size:21px}
+  .qf-pagehdr{flex-direction:column}
+  .qf-maprow{grid-template-columns:1fr;gap:5px}
+  .qf-maprow .qf-mappreview{display:none}
+  /* walkthrough móvil */
+  .qf-pbar{top:auto;bottom:14px;left:50%;width:calc(100vw - 20px);justify-content:center;flex-wrap:wrap;gap:7px;padding:8px 10px}
+  .qf-pnarr{left:12px;right:12px;bottom:78px;width:auto;max-width:none;padding:18px}
+  .qf-pnarr h2{font-size:18px}
+  .qf-slide{padding:26px 18px;justify-content:flex-start;padding-top:70px;overflow-y:auto}
+  .qf-stitle{font-size:30px}
+  .qf-ssub{font-size:14px}
+  .qf-sstats{gap:10px}
+  .qf-sstat{padding:12px 14px;min-width:0;flex:1 1 40%}
+  .qf-scontact{gap:14px}
+  .qf-sbtn{padding:13px 22px;font-size:14px}
+}
+`;
+
+createRoot(document.getElementById('root')).render(<QiuFlow />);
+</script>
+</body>
+</html>
